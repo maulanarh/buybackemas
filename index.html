@@ -65,8 +65,10 @@ summary{cursor:pointer;font-weight:600}
     <div><label for="pct">Tambahan dari spread (%)</label><input id="pct" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="10"></div>
     <div><label for="tgl">Tanggal</label><input id="tgl" type="text" readonly></div>
   </div>
-  <label for="kontak">Nama / kontak di kartu</label>
-  <input id="kontak" type="text" placeholder="Contoh: Maulana — WA 08xx">
+  <label for="nama">Nama usaha Anda</label>
+  <input id="nama" type="text" placeholder="Contoh: Madina Gold">
+  <label for="kontak">Kontak</label>
+  <input id="kontak" type="text" placeholder="Contoh: wa.me/6281217807058">
 
   <details open>
     <summary>Data harga dari JPG</summary>
@@ -114,62 +116,73 @@ function calc(){
   return {gram,jual,bb,pct,spread,saya,totalResmi:gram*bb,totalSaya:gram*saya,selisih:gram*(saya-bb)};
 }
 
+const nm=()=>$("nama").value.trim()||"Kami";
+const kt=()=>$("kontak").value.trim().replace(/wa\.me\/0/i,"wa.me/62");
+const tglPendek=today.toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"});
+
 function teks(){
-  const c=calc();
-  const g=c.gram.toLocaleString("id-ID");
-  let t=`BUYBACK EMAS ${NAMA[src].toUpperCase()}\n${tglText}\n\n`+
-  `Harga buyback resmi: ${rp(c.bb)}/gram\n`+
-  `Harga buyback kami: ${rp(c.saya)}/gram\n\n`+
-  `Untuk ${g} gram: ${rp(c.totalSaya)}\n`+
-  `(lebih tinggi ${rp(c.selisih)} dari buyback resmi)\n\n`+
-  `Tanpa potongan pajak. Harga dapat berubah mengikuti harga resmi hari ini.`;
-  const k=$("kontak").value.trim();
-  if(k)t+=`\nHubungi: ${k}`;
-  return t;
+  const c=calc(),g=c.gram.toLocaleString("id-ID"),n=nm(),k=kt();
+  return `Harga emas ${tglPendek}\n\n`+
+  `Jual ${g} gr di ${NAMA[src]}: ${rp(c.totalResmi)}\n`+
+  `Jual di ${n}: ${rp(c.totalSaya)}\n\n`+
+  `Jual di ${NAMA[src]} harus antri dan kena pajak.\n`+
+  `Jual di ${n} bisa kami jemput di rumah atau kantor, bersih tanpa pajak.`+
+  (k?`\n\n${n} (${k})`:`\n\n${n}`);
+}
+
+function wrapText(x,t,px,py,maxw,lh){
+  let l="";
+  for(const w of t.split(" ")){
+    const test=l?l+" "+w:w;
+    if(x.measureText(test).width>maxw&&l){x.fillText(l,px,py);py+=lh;l=w}else l=test;
+  }
+  x.fillText(l,px,py);return py;
+}
+function fitFont(x,t,weight,fam,size,maxw){
+  x.font=`${weight} ${size}px ${fam}`;
+  while(x.measureText(t).width>maxw&&size>40){size-=4;x.font=`${weight} ${size}px ${fam}`}
+  return size;
 }
 
 function draw(){
-  const c=calc(),cv=$("card"),x=cv.getContext("2d"),W=1080,H=1350;
+  const c=calc(),cv=$("card"),x=cv.getContext("2d"),W=1080,H=1350,n=nm(),k=kt();
   const serif='"Iowan Old Style",Georgia,serif',sans='system-ui,-apple-system,"Segoe UI",sans-serif';
+  const g=c.gram.toLocaleString("id-ID");
   x.fillStyle="#0f3b33";x.fillRect(0,0,W,H);
   x.fillStyle="#b8892e";x.fillRect(0,0,W,16);
-  x.textBaseline="alphabetic";x.textAlign="left";
-  x.fillStyle="#e7d3a1";x.font=`600 34px ${sans}`;
-  x.fillText("PENAWARAN BUYBACK EMAS",80,120);
-  x.fillStyle="#fff";x.font=`700 84px ${serif}`;
-  x.fillText(NAMA[src],80,215);
-  x.fillStyle="#a9c0b8";x.font=`400 32px ${sans}`;
-  x.fillText(tglText,80,270);
+  x.textAlign="left";x.textBaseline="alphabetic";
 
-  x.fillStyle="#b8892e";x.fillRect(80,320,920,3);
+  x.fillStyle="#e7d3a1";x.font=`600 32px ${sans}`;
+  x.fillText(tglText.toUpperCase(),80,100);
 
-  x.fillStyle="#a9c0b8";x.font=`400 34px ${sans}`;
-  x.fillText(`Harga kami untuk ${c.gram.toLocaleString("id-ID")} gram`,80,410);
-  let fs=130;x.font=`700 ${fs}px ${serif}`;
-  const big=rp(c.totalSaya);
-  while(x.measureText(big).width>920&&fs>50){fs-=4;x.font=`700 ${fs}px ${serif}`}
-  x.fillStyle="#f1d68a";x.fillText(big,80,410+fs+20);
+  // Blok 1: harga resmi
+  x.fillStyle="#a9c0b8";x.font=`500 46px ${sans}`;
+  x.fillText(`Jual ${g} gr di ${NAMA[src]}`,80,230);
+  x.fillStyle="#ffffff";
+  const t1=rp(c.totalResmi);let f1=fitFont(x,t1,700,serif,110,920);
+  x.fillText(t1,80,230+f1+10);
 
-  let y=410+fs+110;
-  const rows=[
-    ["Buyback resmi "+NAMA[src]+" /gram",rp(c.bb),"#fff"],
-    ["Harga buyback kami /gram",rp(c.saya),"#f1d68a"],
-    ["Total resmi untuk "+c.gram.toLocaleString("id-ID")+" gram",rp(c.totalResmi),"#fff"],
-    ["Lebih tinggi dari resmi",rp(c.selisih),"#f1d68a"]
-  ];
-  rows.forEach(r=>{
-    x.fillStyle="#a9c0b8";x.font=`400 32px ${sans}`;x.textAlign="left";x.fillText(r[0],80,y);
-    x.fillStyle=r[2];x.font=`700 40px ${sans}`;x.textAlign="right";x.fillText(r[1],1000,y);
-    x.fillStyle="rgba(255,255,255,.14)";x.fillRect(80,y+24,920,2);
-    y+=84;
-  });
-  x.textAlign="left";
-  x.fillStyle="#fff";x.font=`600 34px ${sans}`;
-  x.fillText("Tanpa potongan pajak",80,H-190);
-  x.fillStyle="#a9c0b8";x.font=`400 28px ${sans}`;
-  x.fillText("Harga dapat berubah mengikuti harga resmi hari ini.",80,H-145);
-  const k=$("kontak").value.trim();
-  if(k){x.fillStyle="#f1d68a";x.font=`600 36px ${sans}`;x.fillText(k,80,H-80)}
+  x.fillStyle="rgba(255,255,255,.18)";x.fillRect(80,450,920,2);
+
+  // Blok 2: harga kami
+  x.fillStyle="#e7d3a1";x.font=`600 52px ${sans}`;
+  x.fillText(`Jual di ${n}`,80,560);
+  x.fillStyle="#f1d68a";
+  const t2=rp(c.totalSaya);let f2=fitFont(x,t2,700,serif,150,920);
+  x.fillText(t2,80,560+f2+14);
+
+  // Keterangan
+  let y=560+f2+130;
+  x.fillStyle="#a9c0b8";x.font=`400 36px ${sans}`;
+  y=wrapText(x,`Jual di ${NAMA[src]} harus antri dan kena pajak.`,80,y,920,50)+80;
+  x.fillStyle="#ffffff";x.font=`600 40px ${sans}`;
+  wrapText(x,`Jual di ${n} bisa kami jemput di rumah atau kantor, bersih tanpa pajak.`,80,y,920,56);
+
+  // Footer
+  x.fillStyle="#b8892e";x.fillRect(80,H-190,920,3);
+  x.fillStyle="#f1d68a";x.font=`700 50px ${serif}`;
+  x.fillText(n,80,H-110);
+  if(k){x.fillStyle="#ffffff";x.font=`500 36px ${sans}`;x.fillText(k,80,H-56)}
 }
 
 function render(){draw();["gram","jual","bb"].forEach(()=>{});}
@@ -330,8 +343,8 @@ $("s-antam").onclick=()=>setSrc("antam");
 $("s-g24").onclick=()=>setSrc("g24");
 $("denom").onchange=applyRow;
 $("jpg").onchange=e=>{if(e.target.files[0])runOCR(e.target.files[0])};
-["gram","jual","bb","pct","kontak"].forEach(id=>$(id).addEventListener("input",()=>{
-  if(id==="kontak")store.set("kontak",$(id).value);
+["gram","jual","bb","pct","kontak","nama"].forEach(id=>$(id).addEventListener("input",()=>{
+  if(id==="kontak"||id==="nama")store.set(id,$(id).value);
   if(id==="gram")applyRow();else render();
 }));
 
@@ -357,6 +370,7 @@ $("share").onclick=async()=>{
 };
 
 $("kontak").value=store.get("kontak")||"";
+$("nama").value=store.get("nama")||"";
 setSrc("antam");
 </script>
 </body>
