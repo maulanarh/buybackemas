@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalkulator Buyback Emas</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+:root{--ink:#17231f;--green:#0f3b33;--brass:#b8892e;--mist:#eef1ee;--line:#cfd6d1;--white:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--mist);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 48px;display:grid;gap:20px;grid-template-columns:1fr}
+@media(min-width:860px){main{grid-template-columns:380px 1fr;align-items:start}}
+h1{grid-column:1/-1;margin:0;font:700 28px/1.2 "Iowan Old Style",Georgia,serif;color:var(--green)}
+h1 small{display:block;font:400 14px system-ui;color:#55645d;margin-top:4px}
+.panel{background:var(--white);border:1px solid var(--line);border-radius:10px;padding:16px}
+label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}
+input,select{width:100%;padding:10px 12px;font:inherit;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink)}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--brass);outline-offset:1px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seg button{padding:10px;border:1px solid var(--line);background:#fff;border-radius:6px;font:inherit;font-weight:600;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--green);color:#fff;border-color:var(--green)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{padding:11px 14px;border-radius:6px;border:1px solid var(--green);background:var(--green);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.btn.alt{background:#fff;color:var(--green)}
+.btn:active{transform:translateY(1px)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.actions .wide{grid-column:1/-1}
+.note{font-size:12.5px;color:#55645d;margin:8px 0 0}
+#status{font-size:13px;margin-top:8px;min-height:20px;color:#55645d}
+canvas{width:100%;height:auto;border-radius:10px;border:1px solid var(--line);display:block}
+details{margin-top:14px;font-size:14px}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+th{text-align:left;font-weight:600;padding:4px}
+td{padding:2px}
+td input{padding:6px 8px;font-size:13px}
+tr.warn input{border-color:#b3261e;background:#fdecea}
+.warnmsg{color:#b3261e}
+summary{cursor:pointer;font-weight:600}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<h1>Kalkulator Buyback Emas<small>Harga resmi, harga penawaran Anda, dan kartu siap bagikan.</small></h1>
+
+<section class="panel" aria-label="Input">
+  <div class="seg" role="group" aria-label="Sumber harga">
+    <button type="button" id="s-antam" aria-pressed="true">Antam</button>
+    <button type="button" id="s-g24" aria-pressed="false">Galeri24</button>
+  </div>
+
+  <label for="gram">Berat emas (gram)</label>
+  <input id="gram" type="number" inputmode="decimal" min="0" step="0.01" value="1">
+
+  <label for="denom">Denom acuan harga</label>
+  <select id="denom"><option value="auto">Otomatis (denom terbesar yang muat)</option></select>
+  <div class="row2">
+    <div><label for="jual">Harga jual /gram</label><input id="jual" type="number" inputmode="numeric" min="0"></div>
+    <div><label for="bb">Harga buyback /gram</label><input id="bb" type="number" inputmode="numeric" min="0"></div>
+  </div>
+  <div id="status" role="status"></div>
+
+  <div class="row2">
+    <div><label for="pct">Tambahan dari spread (%)</label><input id="pct" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="10"></div>
+    <div><label for="tgl">Tanggal</label><input id="tgl" type="text" readonly></div>
+  </div>
+  <label for="kontak">Nama / kontak di kartu</label>
+  <input id="kontak" type="text" placeholder="Contoh: Maulana — WA 08xx">
+
+  <details open>
+    <summary>Data harga dari JPG</summary>
+    <label for="jpg">JPG daftar harga harian</label>
+    <input id="jpg" type="file" accept="image/*">
+    <p class="note" id="ocrnote">Satu JPG berisi tabel Antam dan Galeri24 dibaca sekaligus. Butuh internet saat membaca. Periksa angka di tabel, bisa diedit.</p>
+    <div id="tbl"></div>
+  </details>
+</section>
+
+<section class="panel" aria-label="Hasil">
+  <canvas id="card" width="1080" height="1350" aria-label="Kartu penawaran buyback"></canvas>
+  <div class="actions">
+    <button type="button" class="btn wide" id="share">Bagikan JPG + teks</button>
+    <button type="button" class="btn alt" id="dl">Unduh JPG</button>
+    <button type="button" class="btn alt" id="copy">Salin teks</button>
+    <button type="button" class="btn alt wide" id="wa">Kirim teks ke WhatsApp</button>
+  </div>
+  <p class="note">Facebook dan VB: unduh JPG lalu lampirkan, tempel teks yang disalin.</p>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const rp=n=>"Rp "+Math.round(n).toLocaleString("id-ID");
+const NAMA={antam:"Antam",g24:"Galeri24"};
+let src="antam";
+
+const store={
+  get(k){try{return localStorage.getItem(k)}catch(e){return null}},
+  set(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+};
+
+const today=new Date();
+const tglText=today.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+$("tgl").value=tglText;
+
+function calc(){
+  const gram=parseFloat($("gram").value)||0;
+  const jual=parseFloat($("jual").value)||0;
+  const bb=parseFloat($("bb").value)||0;
+  const pct=parseFloat($("pct").value)||0;
+  const spread=Math.max(jual-bb,0);
+  const saya=Math.round((bb+spread*pct/100)/100)*100;
+  return {gram,jual,bb,pct,spread,saya,totalResmi:gram*bb,totalSaya:gram*saya,selisih:gram*(saya-bb)};
+}
+
+function teks(){
+  const c=calc();
+  const g=c.gram.toLocaleString("id-ID");
+  let t=`BUYBACK EMAS ${NAMA[src].toUpperCase()}\n${tglText}\n\n`+
+  `Harga buyback resmi: ${rp(c.bb)}/gram\n`+
+  `Harga buyback kami: ${rp(c.saya)}/gram\n\n`+
+  `Untuk ${g} gram: ${rp(c.totalSaya)}\n`+
+  `(lebih tinggi ${rp(c.selisih)} dari buyback resmi)\n\n`+
+  `Tanpa potongan pajak. Harga dapat berubah mengikuti harga resmi hari ini.`;
+  const k=$("kontak").value.trim();
+  if(k)t+=`\nHubungi: ${k}`;
+  return t;
+}
+
+function draw(){
+  const c=calc(),cv=$("card"),x=cv.getContext("2d"),W=1080,H=1350;
+  const serif='"Iowan Old Style",Georgia,serif',sans='system-ui,-apple-system,"Segoe UI",sans-serif';
+  x.fillStyle="#0f3b33";x.fillRect(0,0,W,H);
+  x.fillStyle="#b8892e";x.fillRect(0,0,W,16);
+  x.textBaseline="alphabetic";x.textAlign="left";
+  x.fillStyle="#e7d3a1";x.font=`600 34px ${sans}`;
+  x.fillText("PENAWARAN BUYBACK EMAS",80,120);
+  x.fillStyle="#fff";x.font=`700 84px ${serif}`;
+  x.fillText(NAMA[src],80,215);
+  x.fillStyle="#a9c0b8";x.font=`400 32px ${sans}`;
+  x.fillText(tglText,80,270);
+
+  x.fillStyle="#b8892e";x.fillRect(80,320,920,3);
+
+  x.fillStyle="#a9c0b8";x.font=`400 34px ${sans}`;
+  x.fillText(`Harga kami untuk ${c.gram.toLocaleString("id-ID")} gram`,80,410);
+  let fs=130;x.font=`700 ${fs}px ${serif}`;
+  const big=rp(c.totalSaya);
+  while(x.measureText(big).width>920&&fs>50){fs-=4;x.font=`700 ${fs}px ${serif}`}
+  x.fillStyle="#f1d68a";x.fillText(big,80,410+fs+20);
+
+  let y=410+fs+110;
+  const rows=[
+    ["Buyback resmi "+NAMA[src]+" /gram",rp(c.bb),"#fff"],
+    ["Harga buyback kami /gram",rp(c.saya),"#f1d68a"],
+    ["Total resmi untuk "+c.gram.toLocaleString("id-ID")+" gram",rp(c.totalResmi),"#fff"],
+    ["Lebih tinggi dari resmi",rp(c.selisih),"#f1d68a"]
+  ];
+  rows.forEach(r=>{
+    x.fillStyle="#a9c0b8";x.font=`400 32px ${sans}`;x.textAlign="left";x.fillText(r[0],80,y);
+    x.fillStyle=r[2];x.font=`700 40px ${sans}`;x.textAlign="right";x.fillText(r[1],1000,y);
+    x.fillStyle="rgba(255,255,255,.14)";x.fillRect(80,y+24,920,2);
+    y+=84;
+  });
+  x.textAlign="left";
+  x.fillStyle="#fff";x.font=`600 34px ${sans}`;
+  x.fillText("Tanpa potongan pajak",80,H-190);
+  x.fillStyle="#a9c0b8";x.font=`400 28px ${sans}`;
+  x.fillText("Harga dapat berubah mengikuti harga resmi hari ini.",80,H-145);
+  const k=$("kontak").value.trim();
+  if(k){x.fillStyle="#f1d68a";x.font=`600 36px ${sans}`;x.fillText(k,80,H-80)}
+}
+
+function render(){draw();["gram","jual","bb"].forEach(()=>{});}
+
+function setSrc(s){
+  src=s;
+  $("s-antam").setAttribute("aria-pressed",s==="antam");
+  $("s-g24").setAttribute("aria-pressed",s==="g24");
+  fillDenom();renderTable();applyRow();
+}
+
+let DATA={antam:{rows:[],tgl:""},g24:{rows:[],tgl:""}};
+try{const v=store.get("data_v1");if(v)DATA=JSON.parse(v)}catch(e){}
+const saveData=()=>store.set("data_v1",JSON.stringify(DATA));
+const BLN="januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember";
+
+function rowFor(){
+  const rows=DATA[src].rows;if(!rows.length)return null;
+  const v=$("denom").value;
+  if(v!=="auto")return rows.find(r=>String(r.d)===v)||null;
+  const g=parseFloat($("gram").value)||0,ok=rows.filter(r=>r.d<=g);
+  return ok.length?ok[ok.length-1]:rows[0];
+}
+function applyRow(){
+  const r=rowFor();
+  if(r){
+    $("jual").value=Math.round(r.jual/r.d);$("bb").value=Math.round(r.bb/r.d);
+    $("status").textContent=`Memakai harga denom ${r.d} g, ${NAMA[src]}, ${DATA[src].tgl||"tanggal JPG tidak terbaca"}.`;
+    const m=(DATA[src].tgl||"").match(new RegExp("(\\d{1,2})\\s+("+BLN+")\\s+(\\d{4})","i"));
+    if(m&&m[0].toLowerCase()!==today.toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}).toLowerCase())
+      $("status").innerHTML+=` <span class="warnmsg">Tanggal JPG berbeda dari hari ini, unggah JPG terbaru.</span>`;
+  }else $("status").textContent=`Belum ada data JPG untuk ${NAMA[src]}. Unggah JPG atau isi harga manual.`;
+  render();
+}
+function fillDenom(){
+  const cur=$("denom").value;
+  $("denom").innerHTML='<option value="auto">Otomatis (denom terbesar yang muat)</option>'+DATA[src].rows.map(r=>`<option value="${r.d}">${r.d} gram</option>`).join("");
+  $("denom").value=[...$("denom").options].some(o=>o.value===cur)?cur:"auto";
+}
+function renderTable(){
+  const rows=DATA[src].rows,box=$("tbl");
+  if(!rows.length){box.innerHTML="";return}
+  const pg=rows.map(r=>r.jual/r.d).sort((x,y)=>x-y),med=pg[Math.floor(pg.length/2)];
+  box.innerHTML=`<p class="note">${NAMA[src]}: ${DATA[src].tgl||"tanggal tidak terbaca"}. Baris merah mencurigakan, cek dengan JPG.</p><table><tr><th>Denom</th><th>Jual</th><th>Buyback</th></tr>`+
+  rows.map((r,i)=>{
+    const bad=r.bb>=r.jual||Math.abs(r.jual/r.d-med)/med>0.06;
+    return `<tr class="${bad?"warn":""}"><td><input data-i="${i}" data-k="d" value="${r.d}"></td><td><input data-i="${i}" data-k="jual" value="${r.jual}"></td><td><input data-i="${i}" data-k="bb" value="${r.bb}"></td></tr>`}).join("")+"</table>";
+  box.querySelectorAll("input").forEach(el=>el.onchange=()=>{
+    const v=parseFloat(el.value.replace(",","."))||0;
+    DATA[src].rows[+el.dataset.i][el.dataset.k]=v;
+    DATA[src].rows.sort((x,y)=>x.d-y.d);saveData();fillDenom();renderTable();applyRow();
+  });
+}
+
+function parseText(t){
+  const out={g24:[],antam:[]},tg={g24:"",antam:""};let cur="g24",prev=0;
+  for(const ln of t.split("\n")){
+    if(/daftar/i.test(ln)&&/antam/i.test(ln)){cur="antam";prev=0}
+    else if(/daftar/i.test(ln)&&/galeri/i.test(ln)){cur="g24";prev=0}
+    const dm=ln.match(new RegExp("\\d{1,2}\\s+("+BLN+")\\s+\\d{4}","i"));
+    if(dm&&!tg[cur])tg[cur]=dm[0];
+    const m=ln.replace(/[|\[\]]/g," ").match(/(?:^|\s)(\d+(?:[.,]5)?)\s+(\d{1,3}(?:[.,]\d{3})+)\s+(\d{1,3}(?:[.,]\d{3})+)/);
+    if(!m)continue;
+    const d=parseFloat(m[1].replace(",",".")),jual=+m[2].replace(/[.,]/g,""),bb=+m[3].replace(/[.,]/g,"");
+    if(cur==="g24"&&d<=prev)cur="antam";
+    prev=d;
+    if(!out[cur].some(r=>r.d===d))out[cur].push({d,jual,bb});
+  }
+  for(const k of ["g24","antam"])out[k].sort((x,y)=>x.d-y.d);
+  return {out,tg};
+}
+async function runOCR(file){
+  const note=$("ocrnote");
+  if(typeof Tesseract==="undefined"){note.textContent="Pembaca teks belum termuat. Periksa koneksi internet lalu muat ulang halaman.";return}
+  try{
+    note.textContent="Menyiapkan gambar...";
+    const img=await createImageBitmap(file),sc=Math.max(1,2200/img.width),c=document.createElement("canvas");
+    c.width=img.width*sc;c.height=img.height*sc;
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    const r=await Tesseract.recognize(c,"eng",{logger:m=>{if(m.status==="recognizing text")note.textContent="Membaca JPG... "+Math.round(m.progress*100)+"%"}});
+    const {out,tg}=parseText(r.data.text);
+    if(!out.antam.length&&!out.g24.length){note.textContent="Tabel tidak terbaca. Coba JPG yang lebih tajam, atau isi harga manual.";return}
+    for(const k of ["g24","antam"])if(out[k].length)DATA[k]={rows:out[k],tgl:tg[k]};
+    saveData();
+    note.textContent=`Terbaca: Antam ${out.antam.length} baris, Galeri24 ${out.g24.length} baris. Periksa angka di tabel.`;
+    fillDenom();renderTable();applyRow();
+  }catch(e){note.textContent="Gagal membaca JPG. Periksa koneksi internet lalu coba lagi."}
+}
+
+async function makeBlob(){return new Promise(r=>$("card").toBlob(r,"image/jpeg",0.92))}
+function fname(){return `buyback-${NAMA[src].toLowerCase()}-${today.toISOString().slice(0,10)}.jpg`}
+
+$("s-antam").onclick=()=>setSrc("antam");
+$("s-g24").onclick=()=>setSrc("g24");
+$("denom").onchange=applyRow;
+$("jpg").onchange=e=>{if(e.target.files[0])runOCR(e.target.files[0])};
+["gram","jual","bb","pct","kontak"].forEach(id=>$(id).addEventListener("input",()=>{
+  if(id==="kontak")store.set("kontak",$(id).value);
+  if(id==="gram")applyRow();else render();
+}));
+
+$("dl").onclick=async()=>{
+  const b=await makeBlob(),a=document.createElement("a");
+  a.href=URL.createObjectURL(b);a.download=fname();a.click();
+};
+$("copy").onclick=async()=>{
+  try{await navigator.clipboard.writeText(teks());$("status").textContent="Teks disalin."}
+  catch(e){$("status").textContent="Gagal menyalin teks."}
+};
+$("wa").onclick=()=>window.open("https://wa.me/?text="+encodeURIComponent(teks()),"_blank");
+$("share").onclick=async()=>{
+  const b=await makeBlob();
+  const f=new File([b],fname(),{type:"image/jpeg"});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    try{await navigator.share({files:[f],text:teks()})}catch(e){}
+  }else{
+    $("dl").click();
+    try{await navigator.clipboard.writeText(teks())}catch(e){}
+    $("status").textContent="JPG diunduh dan teks disalin. Lampirkan manual di WA/FB/VB.";
+  }
+};
+
+$("kontak").value=store.get("kontak")||"";
+setSrc("antam");
+</script>
+</body>
+</html>
