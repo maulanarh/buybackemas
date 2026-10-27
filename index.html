@@ -38,13 +38,25 @@ tr.warn input{border-color:#b3261e;background:#fdecea}
 .warnmsg{color:#b3261e}
 summary{cursor:pointer;font-weight:600}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+.tabs{grid-column:1/-1;max-width:420px}
+main[data-view="bb"] .v-of{display:none}
+main[data-view="of"] .v-bb{display:none}
+textarea{width:100%;padding:12px;font:inherit;border:1px solid var(--line);border-radius:6px;line-height:1.5;resize:vertical;color:var(--ink)}
+.sum{background:var(--green);color:#fff;border-radius:8px;padding:14px 16px;margin-bottom:12px}
+.sum b{display:block;font:700 30px/1.2 "Iowan Old Style",Georgia,serif;color:#f1d68a}
+.sum span{font-size:13px;color:#cfe0d9}
 </style>
 </head>
 <body>
-<main>
+<main data-view="bb">
 <h1>Kalkulator Buyback Emas<small>Harga resmi, harga penawaran Anda, dan kartu siap bagikan.</small></h1>
 
-<section class="panel" aria-label="Input">
+<nav class="seg tabs" aria-label="Menu">
+  <button type="button" id="t-bb" aria-pressed="true">Hitung Buyback</button>
+  <button type="button" id="t-of" aria-pressed="false">Penawaran Jual</button>
+</nav>
+
+<section class="panel v-bb" aria-label="Input">
   <div class="seg" role="group" aria-label="Sumber harga">
     <button type="button" id="s-antam" aria-pressed="true">Antam</button>
     <button type="button" id="s-g24" aria-pressed="false">Galeri24</button>
@@ -79,7 +91,7 @@ summary{cursor:pointer;font-weight:600}
   </details>
 </section>
 
-<section class="panel" aria-label="Hasil">
+<section class="panel v-bb" aria-label="Hasil">
   <canvas id="card" width="1080" height="1350" aria-label="Kartu penawaran buyback"></canvas>
   <div class="actions">
     <button type="button" class="btn wide" id="share">Bagikan JPG + teks</button>
@@ -88,6 +100,38 @@ summary{cursor:pointer;font-weight:600}
     <button type="button" class="btn alt wide" id="wa">Kirim teks ke WhatsApp</button>
   </div>
   <p class="note">Facebook dan VB: unduh JPG lalu lampirkan, tempel teks yang disalin.</p>
+</section>
+
+<section class="panel v-of" aria-label="Input penawaran">
+  <div class="row2">
+    <div><label for="o-brand">Merek emas</label><select id="o-brand"><option value="antam">Antam</option><option value="ubs">UBS</option><option value="g24">Galeri24</option></select></div>
+    <div><label for="o-gram">Berat (gram)</label><input id="o-gram" type="number" inputmode="decimal" min="0" step="0.01" value="5"></div>
+  </div>
+  <div class="row2">
+    <div><label for="o-jual">Harga jual resmi /gram</label><input id="o-jual" type="number" inputmode="numeric" min="0"></div>
+    <div><label for="o-bb">Harga buyback /gram</label><input id="o-bb" type="number" inputmode="numeric" min="0"></div>
+  </div>
+  <div id="o-status" class="note" role="status"></div>
+  <div class="row2">
+    <div><label for="o-mode">Dasar harga penawaran</label><select id="o-mode"><option value="spread">% dari spread, di atas buyback</option><option value="jual">% di atas harga jual resmi</option></select></div>
+    <div><label for="o-pct">Persentase (%)</label><input id="o-pct" type="number" inputmode="decimal" step="0.5" value="50"></div>
+  </div>
+  <label for="o-me">Nama Anda</label><input id="o-me" type="text" placeholder="Contoh: Maulana">
+  <label for="nama2">Nama usaha</label><input id="nama2" type="text" placeholder="Contoh: Madina Gold">
+  <label for="kontak2">Kontak</label><input id="kontak2" type="text" placeholder="Contoh: wa.me/6281217807058">
+  <label for="o-extra">Info tambahan (opsional)</label><input id="o-extra" type="text" placeholder="Contoh: Disertai sertifikat dan kemasan asli">
+</section>
+
+<section class="panel v-of" aria-label="Teks penawaran">
+  <div class="sum" id="o-sum"></div>
+  <label for="o-text" style="margin-top:0">Teks penawaran (bisa diedit)</label>
+  <textarea id="o-text" rows="18"></textarea>
+  <div class="actions">
+    <button type="button" class="btn wide" id="o-share">Bagikan teks</button>
+    <button type="button" class="btn alt" id="o-copy">Salin teks</button>
+    <button type="button" class="btn alt" id="o-wa">Kirim ke WhatsApp</button>
+    <button type="button" class="btn alt wide" id="o-reset">Susun ulang teks dari data</button>
+  </div>
 </section>
 </main>
 
@@ -371,6 +415,71 @@ $("share").onclick=async()=>{
   }
 };
 
+
+// ===== Tab Penawaran Jual =====
+const ONAMA={antam:"Antam",g24:"Galeri24",ubs:"UBS"};
+let oDirty=false;
+function setView(v){
+  document.querySelector("main").dataset.view=v;
+  $("t-bb").setAttribute("aria-pressed",v==="bb");
+  $("t-of").setAttribute("aria-pressed",v==="of");
+  if(v==="of"){
+    $("nama2").value=$("nama").value;$("kontak2").value=$("kontak").value;
+    oAutofill();
+  }
+}
+function oAutofill(){
+  const b=$("o-brand").value,g=parseFloat($("o-gram").value)||0,rows=(DATA[b]&&DATA[b].rows)||[];
+  if(rows.length){
+    const ok=rows.filter(r=>r.d<=g),r=ok.length?ok[ok.length-1]:rows[0];
+    $("o-jual").value=Math.round(r.jual/r.d);$("o-bb").value=Math.round(r.bb/r.d);
+    $("o-status").textContent=`Harga per gram dari denom ${r.d} g, ${ONAMA[b]}, ${DATA[b].tgl||"tanggal JPG tidak terbaca"}.`;
+  }else $("o-status").textContent=b==="ubs"?"Harga UBS belum ada di JPG, isi harga jual dan buyback manual.":`Belum ada data JPG untuk ${ONAMA[b]}. Unggah JPG di tab Hitung Buyback atau isi manual.`;
+  oUpdate();
+}
+function oCalc(){
+  const g=parseFloat($("o-gram").value)||0,j=parseFloat($("o-jual").value)||0,b=parseFloat($("o-bb").value)||0,pct=parseFloat($("o-pct").value)||0;
+  const raw=$("o-mode").value==="spread"?b+Math.max(j-b,0)*pct/100:j*(1+pct/100);
+  const pg=Math.round(raw/100)*100;
+  return {g,j,b,pg,total:g*pg};
+}
+function oText(){
+  const o=oCalc(),me=$("o-me").value.trim(),biz=$("nama2").value.trim(),k=$("kontak2").value.trim().replace(/wa\.me\/0/i,"wa.me/62"),ex=$("o-extra").value.trim();
+  const br=ONAMA[$("o-brand").value],h=new Date().getHours(),sal=h<11?"pagi":h<15?"siang":h<18?"sore":"malam";
+  const who=me&&biz?`saya ${me} dari ${biz}`:me?`saya ${me}`:biz?`kami dari ${biz}`:"kami";
+  const gr=o.g.toLocaleString("id-ID");
+  let t=`Selamat ${sal}, Bapak/Ibu.\n\nPerkenalkan, ${who}. Kami baru memulai usaha jual beli emas dan melayani komunitas kami yang rutin bertransaksi logam mulia Antam, UBS, dan Galeri24.\n\n`+
+  `Hari ini kami menawarkan emas ${br} ${gr} gr dengan harga ${rp(o.total)}.\n\n`+
+  `Sebagai pembanding, harga acuan ${br} ${gr} gr per ${tglPendek}: jual ${rp(o.j*o.g)} dan buyback ${rp(o.b*o.g)}.`;
+  if(o.pg<o.j)t+=` Penawaran kami ${rp((o.j-o.pg)*o.g)} di bawah harga jual tersebut.`;
+  if(ex)t+=`\n\n${ex}`;
+  t+=`\n\nKe depan kami akan rutin menyediakan logam mulia Antam, UBS, dan Galeri24. Jika Bapak/Ibu berminat, atau ingin dikabari saat ada stok berikutnya, silakan hubungi kami.\n\nTerima kasih atas waktunya.\n`;
+  t+=`${me||biz}`+(me&&biz?`\n${biz}`:"")+(k?` (${k})`:"");
+  return t;
+}
+function oUpdate(){
+  const o=oCalc();
+  $("o-sum").innerHTML=`<span>Harga penawaran ${o.g.toLocaleString("id-ID")} gr ${ONAMA[$("o-brand").value]}</span><b>${rp(o.total)}</b><span>${rp(o.pg)} per gram${o.j?` · harga jual resmi ${rp(o.j)}`:""}</span>`;
+  if(!oDirty)$("o-text").value=oText();
+}
+$("t-bb").onclick=()=>setView("bb");
+$("t-of").onclick=()=>setView("of");
+["o-brand","o-gram"].forEach(id=>$(id).addEventListener("input",oAutofill));
+["o-jual","o-bb","o-mode","o-pct","o-me","nama2","kontak2","o-extra"].forEach(id=>$(id).addEventListener("input",()=>{
+  if(id==="nama2"){$("nama").value=$("nama2").value;store.set("nama",$("nama2").value)}
+  if(id==="kontak2"){$("kontak").value=$("kontak2").value;store.set("kontak",$("kontak2").value);}
+  if(id==="o-me")store.set("me",$("o-me").value);
+  oUpdate();render();
+}));
+$("o-text").addEventListener("input",()=>{oDirty=true});
+$("o-reset").onclick=()=>{oDirty=false;oUpdate()};
+$("o-copy").onclick=async()=>{try{await navigator.clipboard.writeText($("o-text").value);$("o-status").textContent="Teks disalin."}catch(e){$("o-status").textContent="Gagal menyalin teks."}};
+$("o-wa").onclick=()=>window.open("https://wa.me/?text="+encodeURIComponent($("o-text").value),"_blank");
+$("o-share").onclick=async()=>{
+  if(navigator.share){try{await navigator.share({text:$("o-text").value})}catch(e){}}
+  else $("o-copy").click();
+};
+$("o-me").value=store.get("me")||"Maulana";
 $("kontak").value=store.get("kontak")||"";
 $("nama").value=store.get("nama")||"";
 setSrc("antam");
